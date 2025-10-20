@@ -1,8 +1,13 @@
-// youtube-hd.behavior.js  (for Browsertrix Web UI; no exports)
+// youtube-hd.behavior.js  — for Browsertrix Web UI (single class, no exports)
 
 class YouTubeHDBehavior {
   static id = "YouTube HD (enlarge player + request HD)";
   static runInIframes = true;
+
+  // REQUIRED by loader (even if empty)
+  static init() {
+    // place for one-time setup if you ever need it
+  }
 
   // run on pages that have a YT embed
   static isMatch() {
@@ -25,28 +30,21 @@ class YouTubeHDBehavior {
   }
 
   async* run(ctx) {
-    // make viewport big; helps YouTube pick HD
+    // make viewport big; helps YT choose HD
     try {
       if (window.outerWidth < 1400 || window.outerHeight < 800) {
         window.resizeTo(1600, 900);
       }
     } catch (_) {}
 
-    const iframes = Array.from(
-      document.querySelectorAll('iframe[src*="youtube"]')
-    );
+    const iframes = Array.from(document.querySelectorAll('iframe[src*="youtube"]'));
 
     // ensure JS API + hint HD + enlarge frames
     for (const frame of iframes) {
       try {
         const u = new URL(frame.src, document.baseURI);
-        if (!u.searchParams.has("enablejsapi")) {
-          u.searchParams.set("enablejsapi", "1");
-        }
-        if (!u.searchParams.has("vq")) {
-          // hint; not guaranteed
-          u.searchParams.set("vq", "hd1080");
-        }
+        if (!u.searchParams.has("enablejsapi")) u.searchParams.set("enablejsapi", "1");
+        if (!u.searchParams.has("vq")) u.searchParams.set("vq", "hd1080"); // hint only
         const newSrc = u.toString();
         if (newSrc !== frame.src) frame.src = newSrc;
 
