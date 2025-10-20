@@ -1,17 +1,15 @@
-// youtube-hd.behavior.js — Browsertrix Web UI (single class, no exports)
+// youtube-hd.behavior.js — Browsertrix Web UI compatible (one class, no exports)
 
 class YouTubeHDBehavior {
-  static id = "YouTube HD (custom, enlarge + request HD)";
+  static id = "YouTube HD (custom; enlarge + request HD)";
   static runInIframes = true;
 
-  // REQUIRED by the loader even if no-op
-  static init() {
-    // one-time setup spot if needed
+  // REQUIRED and must RETURN an object (at least { state: {} })
+  static init(ctx) {
+    return { state: {} };
   }
 
-  // Match either:
-  //  - top pages that contain a YouTube iframe, OR
-  //  - the YouTube iframe document itself (domain match)
+  // Run on pages that contain a YT iframe OR inside the iframe doc itself
   static isMatch() {
     const hasYTFrame = !!document.querySelector(
       'iframe[src*="youtube.com"], iframe[src*="youtube-nocookie.com"]'
@@ -22,9 +20,9 @@ class YouTubeHDBehavior {
     return hasYTFrame || isYTDoc;
   }
 
+  // Let frames settle before main behavior
   async awaitPageLoad() {
-    // allow initial network/iframes to settle
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1500));
   }
 
   static _post(frame, func, args = []) {
@@ -37,10 +35,12 @@ class YouTubeHDBehavior {
   }
 
   async* run(ctx) {
-    // Log that we started (shows up in Browsertrix "Page Behavior" logs)
-    yield "YouTubeHDBehavior: start";
+    const { Lib } = ctx;
 
-    // Make viewport big; helps YouTube select HD renditions
+    // mark start
+    yield Lib.getState("YouTubeHD: start", "start");
+
+    // make viewport big (helps YT choose HD)
     try {
       if (window.outerWidth < 1400 || window.outerHeight < 800) {
         window.resizeTo(1600, 900);
@@ -52,11 +52,11 @@ class YouTubeHDBehavior {
       host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com");
 
     if (!isYTDoc) {
-      // We're on the parent page: operate on YT iframes
+      // Parent page: operate on YT iframes
       const iframes = Array.from(
         document.querySelectorAll('iframe[src*="youtube"]')
       );
-      yield `YouTubeHDBehavior: found ${iframes.length} YT iframe(s)`;
+      yield Lib.getState(`YouTubeHD: found ${iframes.length} iframe(s)`, "ifr");
 
       for (const frame of iframes) {
         try {
@@ -66,18 +66,17 @@ class YouTubeHDBehavior {
           const newSrc = u.toString();
           if (newSrc !== frame.src) {
             frame.src = newSrc;
-            yield "YouTubeHDBehavior: updated iframe src with enablejsapi + vq";
+            yield Lib.getState("YouTubeHD: updated iframe src (enablejsapi+vq)", "upd");
           }
 
-          // Make it big & visible
-          frame.width = Math.max(parseInt(frame.width || "0", 10), 1280);
+          frame.width  = Math.max(parseInt(frame.width  || "0", 10), 1280);
           frame.height = Math.max(parseInt(frame.height || "0", 10), 720);
           frame.style.visibility = "visible";
           frame.style.opacity = "1";
         } catch (_) {}
       }
 
-      // wait a bit so iframes reload with enablejsapi
+      // let the iframes reload with enablejsapi
       await new Promise((r) => setTimeout(r, 1500));
 
       for (const frame of iframes) {
@@ -85,25 +84,23 @@ class YouTubeHDBehavior {
         YouTubeHDBehavior._post(frame, "playVideo");
         YouTubeHDBehavior._post(frame, "setPlaybackQuality", ["hd1080"]);
       }
-      yield "YouTubeHDBehavior: sent play + setPlaybackQuality requests";
+      yield Lib.getState("YouTubeHD: sent play + setPlaybackQuality", "req");
     } else {
-      // We are inside the iframe document (youtube.com)
-      // Nudge playback by interacting with the <video> if present
+      // Inside the iframe document: try direct <video> nudge
       const video = document.querySelector("video");
       if (video) {
         try {
-          video.setAttribute("muted", "true");
           video.muted = true;
           await video.play().catch(() => {});
-          yield "YouTubeHDBehavior: played video inside iframe";
+          yield Lib.getState("YouTubeHD: played <video> inside iframe", "play");
         } catch (_) {}
       } else {
-        yield "YouTubeHDBehavior: no <video> found in iframe";
+        yield Lib.getState("YouTubeHD: no <video> in iframe", "novid");
       }
     }
 
-    // Give time for higher-bitrate segments to arrive
+    // allow higher-bitrate segments to arrive
     await new Promise((r) => setTimeout(r, 8000));
-    yield "YouTubeHDBehavior: done";
+    yield Lib.getState("YouTubeHD: done", "done");
   }
 }
